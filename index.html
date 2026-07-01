@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Finacta</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#EFEDE6; --surface:#FBFAF6; --ink:#18221F; --brand:#114B40;
+    --accent:#C98A3C; --muted:#6E7A74; --line:#E2DDD1; --radius:14px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:var(--paper);color:var(--ink);
+    font-family:"Inter",system-ui,sans-serif;-webkit-font-smoothing:antialiased;
+    display:flex;flex-direction:column;min-height:100dvh;
+  }
+  header{display:flex;align-items:center;gap:.6rem;padding:1.2rem 1.4rem .4rem}
+  .wordmark{font-family:"Fraunces",serif;font-weight:600;font-size:1.15rem;letter-spacing:-.01em;color:var(--brand)}
+  .wordmark .dot{color:var(--accent)}
+  .progress-wrap{padding:0 1.4rem}
+  .progress-track{height:3px;background:var(--line);border-radius:99px;overflow:hidden}
+  .progress-bar{height:100%;width:0;background:var(--brand);border-radius:99px;transition:width .45s cubic-bezier(.22,.61,.36,1)}
+  main{flex:1;display:flex;justify-content:center;padding:2rem 1.4rem 3rem}
+  .stage{width:100%;max-width:540px}
+  .eyebrow{font-size:.74rem;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--accent);margin-bottom:1rem}
+  .question{font-family:"Fraunces",serif;font-weight:500;font-size:clamp(1.55rem,5.2vw,2.1rem);line-height:1.18;letter-spacing:-.015em;margin:0 0 1.6rem}
+  .lead-text{color:var(--muted);font-size:1.02rem;line-height:1.55;margin:0 0 2rem}
+  .field input{
+    width:100%;background:var(--surface);border:1.5px solid var(--line);border-radius:var(--radius);
+    padding:1rem 1.1rem;font-size:1.05rem;font-family:inherit;color:var(--ink);transition:border-color .2s,box-shadow .2s;
+  }
+  .field input::placeholder{color:#A9ADA5}
+  .field input:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 4px rgba(17,75,64,.12)}
+  .error{color:#B5462F;font-size:.85rem;margin-top:.5rem;min-height:1rem}
+  .options{display:flex;flex-direction:column;gap:.6rem}
+  .option{
+    text-align:left;background:var(--surface);border:1.5px solid var(--line);border-radius:var(--radius);
+    padding:.95rem 1.1rem;font-size:1.02rem;font-family:inherit;color:var(--ink);cursor:pointer;
+    display:flex;align-items:center;gap:.8rem;transition:border-color .18s,background .18s,transform .06s;
+  }
+  .option .tick{width:18px;height:18px;border-radius:99px;border:1.5px solid var(--line);flex:none;transition:border-color .18s,background .18s}
+  .option:hover{border-color:var(--brand)}
+  .option:hover .tick{border-color:var(--brand)}
+  .option:active{transform:scale(.992)}
+  .option.is-selected{border-color:var(--brand);background:#F0F4F1}
+  .option.is-selected .tick{border-color:var(--brand);background:var(--brand);box-shadow:inset 0 0 0 3px var(--surface)}
+  .actions{margin-top:1.8rem;display:flex;align-items:center;gap:1rem}
+  .btn{
+    background:var(--brand);color:#fff;border:none;border-radius:var(--radius);padding:.95rem 1.6rem;
+    font-size:1rem;font-weight:600;font-family:inherit;cursor:pointer;transition:opacity .18s,transform .06s;text-decoration:none;display:inline-block;
+  }
+  .btn:hover{opacity:.92}
+  .btn:active{transform:scale(.99)}
+  .hint{color:var(--muted);font-size:.85rem}
+  footer{padding:1rem 1.4rem 1.4rem;color:var(--muted);font-size:.78rem}
+  .step-enter{animation:rise .42s cubic-bezier(.22,.61,.36,1) both}
+  @keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+  <header><span class="wordmark">Finacta<span class="dot">.</span></span></header>
+  <div class="progress-wrap"><div class="progress-track"><div class="progress-bar" id="bar"></div></div></div>
+  <main><div class="stage" id="stage" aria-live="polite"></div></main>
+  <footer>Clareza financeira, sob medida.</footer>
+
+<script>
+/* ============================================================
+   CONFIGURAÇÃO  — edite só esta parte
+   ============================================================ */
+const CONFIG = {
+  // WhatsApp da Amanda: só dígitos, formato internacional (55 + DDD + número)
+  whatsappNumber: "5531900000000",
+
+  // Mensagem que abre a conversa. {nome} e {objetivo} são preenchidos.
+  whatsappMessage: "Olá, Amanda! Sou {nome} e cheguei pelo formulário do Instagram. Gostaria de conversar sobre: {objetivo}.",
+
+  // Endereço que grava o lead no Notion (a função/servidor que segura o token).
+  // Deixe "" para rodar 100% estático: o formulário funciona e leva pro WhatsApp,
+  //   só não grava no Notion automaticamente.
+  // Preencha (ex.: "/api/lead") para também gravar no Notion.
+  submitEndpoint: "/api/lead"
+};
+
+/* ============================================================
+   FUNIL  — as perguntas. Mesma estrutura do flow_config.py
+   ============================================================ */
+const FLOW = [
+  { id:"boas_vindas", type:"info",
+    title:"Que bom te ver por aqui.",
+    text:"Antes da gente conversar, quero entender um pouco do seu momento para te dar a melhor direção. São poucas perguntas, leva menos de um minuto.",
+    button:"Bora começar" },
+  { id:"nome", type:"text", question:"Para começar, como você se chama?", placeholder:"Seu nome", required:true },
+  { id:"whatsapp", type:"phone", question:"Qual é o seu WhatsApp, com DDD?", placeholder:"(31) 9 0000-0000", required:true },
+  { id:"email", type:"email", question:"E o seu melhor e-mail?", placeholder:"voce@email.com", required:true },
+  { id:"como_conheceu", type:"choice", question:"Como você chegou até a Finacta?",
+    options:["Instagram","Indicação de alguém","TikTok","Outro"] },
+  { id:"quem_indicou", type:"text", question:"Que ótimo. Quem te indicou?", placeholder:"Nome de quem indicou",
+    required:false, show_if:{field:"como_conheceu", equals:"Indicação de alguém"} },
+  { id:"objetivo", type:"choice", question:"Qual é o seu principal objetivo financeiro agora?",
+    options:["Organizar minha vida financeira","Começar a investir","Investir melhor o que já tenho","Sair das dívidas","Planejar um objetivo (casa, viagem, aposentadoria)"] },
+  { id:"dificuldade", type:"choice", question:"E qual é a sua maior dificuldade hoje?",
+    options:["Não sei por onde começar","Invisto, mas sem estratégia","Gasto mais do que gostaria","Não tenho tempo de cuidar disso","Outra"] },
+  { id:"faixa_renda", type:"choice", question:"Para eu entender seu momento, qual faixa de renda mensal melhor te representa?",
+    options:["Até R$5.000","Entre R$5.000 e R$10.000","Entre R$10.000 e R$20.000","Acima de R$20.000","Prefiro não informar"] },
+  { id:"ja_planejou", type:"choice", question:"Você já fez algum planejamento financeiro ou consultoria antes?",
+    options:["Sim, já fiz","Não, nunca","Tentei sozinho(a)"] },
+  { id:"encerramento", type:"info",
+    title:"Perfeito, {nome}.",
+    text:"Já tenho o que preciso para te dar uma boa direção. Vou te levar agora para o WhatsApp da Amanda para a gente continuar de lá.",
+    button:"Falar com a Amanda no WhatsApp" }
+];
+
+/* ============================================================
+   MOTOR  — não precisa mexer daqui pra baixo
+   ============================================================ */
+const answers = {};
+let index = 0;
+const stage = document.getElementById("stage");
+const bar = document.getElementById("bar");
+const answerable = FLOW.filter(s => s.type !== "info");
+
+function shouldShow(step){
+  if(!step.show_if) return true;
+  return (answers[step.show_if.field] || "") === step.show_if.equals;
+}
+function interpolate(str){ return (str||"").replace(/\{(\w+)\}/g, (_,k)=>answers[k]||""); }
+function updateProgress(step){
+  const done = answerable.filter(s => answers[s.id] !== undefined).length;
+  let pct = Math.round((done/answerable.length)*100);
+  if(step && step.id === FLOW[FLOW.length-1].id) pct = 100;
+  bar.style.width = pct + "%";
+}
+function advance(){
+  syncStep(FLOW[index]);
+  index++;
+  while(index < FLOW.length && !shouldShow(FLOW[index])) index++;
+  if(index >= FLOW.length){ finish(); return; }
+  render();
+}
+function render(){
+  const step = FLOW[index];
+  stage.innerHTML = "";
+  const wrap = document.createElement("div");
+  wrap.className = "step-enter";
+
+  if(step.type === "info"){
+    wrap.innerHTML = `<h1 class="question">${interpolate(step.title)}</h1>
+      <p class="lead-text">${interpolate(step.text)}</p>
+      <div class="actions"><button class="btn">${step.button||"Continuar"}</button></div>`;
+    wrap.querySelector(".btn").addEventListener("click", advance);
+    stage.appendChild(wrap); updateProgress(step); return;
+  }
+
+  wrap.innerHTML = `<div class="eyebrow">Pergunta ${answerable.indexOf(step)+1} de ${answerable.length}</div>
+    <h1 class="question">${interpolate(step.question)}</h1>`;
+
+  if(step.type === "choice"){
+    const opts = document.createElement("div"); opts.className = "options";
+    step.options.forEach(opt => {
+      const b = document.createElement("button");
+      b.className = "option";
+      b.innerHTML = `<span class="tick"></span><span>${opt}</span>`;
+      b.addEventListener("click", () => {
+        answers[step.id] = opt;
+        opts.querySelectorAll(".option").forEach(o=>o.classList.remove("is-selected"));
+        b.classList.add("is-selected");
+        setTimeout(advance, 220);
+      });
+      opts.appendChild(b);
+    });
+    wrap.appendChild(opts);
+  } else {
+    const types = {text:"text", email:"email", phone:"tel"};
+    const field = document.createElement("div"); field.className = "field";
+    field.innerHTML = `<input type="${types[step.type]||"text"}" placeholder="${step.placeholder||""}"
+        inputmode="${step.type==="phone"?"tel":(step.type==="email"?"email":"text")}" value="${answers[step.id]||""}">
+      <div class="error"></div>
+      <div class="actions"><button class="btn">Continuar</button><span class="hint">Enter para seguir</span></div>`;
+    const input = field.querySelector("input");
+    const err = field.querySelector(".error");
+    const go = () => {
+      const val = input.value.trim();
+      const msg = validate(step, val);
+      if(msg){ err.textContent = msg; input.focus(); return; }
+      if(val) answers[step.id] = val;
+      advance();
+    };
+    field.querySelector(".btn").addEventListener("click", go);
+    input.addEventListener("keydown", e => { if(e.key === "Enter") go(); });
+    input.addEventListener("input", () => { err.textContent = ""; });
+    wrap.appendChild(field);
+    setTimeout(()=>input.focus(), 80);
+  }
+  stage.appendChild(wrap); updateProgress(step);
+}
+function validate(step, val){
+  if(step.required && !val) return "Esse campo é necessário para seguir.";
+  if(!val) return "";
+  if(step.type === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) return "Confere o e-mail, parece que falta algo.";
+  if(step.type === "phone" && val.replace(/\D/g,"").length < 10) return "Confere o número, parece curto demais.";
+  return "";
+}
+function whatsappUrl(){
+  const num = CONFIG.whatsappNumber.replace(/\D/g,"");
+  const texto = CONFIG.whatsappMessage
+    .replace("{nome}", answers.nome || "uma pessoa")
+    .replace("{objetivo}", answers.objetivo || "falar com você");
+  return `https://wa.me/${num}?text=${encodeURIComponent(texto)}`;
+}
+/* ---- Captura progressiva: cria cedo, completa depois ---- */
+let leadPageId = null;
+let leadCreatePromise = null;
+
+async function ensureLeadCreated(){
+  if(!CONFIG.submitEndpoint) return null;
+  if(leadPageId) return leadPageId;
+  if(leadCreatePromise) return leadCreatePromise;
+  leadCreatePromise = (async () => {
+    try{
+      const r = await fetch(CONFIG.submitEndpoint, {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ action:"create", answers })
+      });
+      const d = await r.json();
+      if(d && d.pageId) leadPageId = d.pageId;
+    }catch(e){}
+    return leadPageId;
+  })();
+  return leadCreatePromise;
+}
+
+async function pushLeadUpdate(complete){
+  if(!CONFIG.submitEndpoint) return;
+  const id = await ensureLeadCreated();
+  if(!id) return;
+  try{
+    await fetch(CONFIG.submitEndpoint, {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ action:"update", pageId:id, answers, complete: !!complete }),
+      keepalive:true
+    });
+  }catch(e){}
+}
+
+// Roda a cada passo: no WhatsApp cria a linha; depois disso, vai atualizando.
+function syncStep(step){
+  if(!step || step.type === "info") return;
+  if(step.id === "whatsapp"){ ensureLeadCreated(); return; }
+  if(leadPageId || leadCreatePromise){ pushLeadUpdate(false); }
+}
+
+async function finish(){
+  const url = whatsappUrl();
+  // Atualização final marcando o lead como completo (Novo contato).
+  // Espera no máximo 1,2s para não segurar o redirecionamento pro WhatsApp.
+  if(CONFIG.submitEndpoint){
+    try{
+      await Promise.race([ pushLeadUpdate(true), new Promise(r=>setTimeout(r,1200)) ]);
+    }catch(e){}
+  }
+  window.location.href = url;
+}
+render();
+</script>
+</body>
+</html>
