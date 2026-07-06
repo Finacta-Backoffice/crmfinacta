@@ -71,12 +71,21 @@ SEED <- 42L
 # ate completar n_empresas_teste (robustez da primeira entrega).
 BACKFILL_FAILED <- TRUE
 
+# ARQUITETURAS DA REDE (abordagem empirica) -- geradas por arquitetura_redes()
+# (R/10_architectures.R). Cada elemento e um vetor de UNIDADES POR CAMADA de
+# GRU empilhada. Ex.: arquitetura_redes(2, c(16, 32)) ->
+#   list(c(16), c(32), c(16,16), c(32,32))  [1-2 camadas; larguras 16 e 32].
+# Aumente 'max_camadas' e/ou o conjunto de larguras para buscar topologias mais
+# profundas (cuidado com o custo computacional e overfitting).
+ARQ_MAX_CAMADAS <- 2L
+ARQ_NEURONIOS   <- c(16L, 32L)
+
 # GRADE DE HIPERPARAMETROS (mantida enxuta para tempo de execucao razoavel).
+# A topologia entra via 'arch_id' (indice em ARCHITECTURES, definido abaixo).
 # Para escalar, amplie as listas e/ou aumente MAX_HP_COMBOS.
-HP_GRID <- list(
+HP_GRID_BASE <- list(
   ind_window    = c(5L, 10L, 21L),   # janela dos indicadores tecnicos (5..21)
   lookback      = c(10L, 20L),       # tamanho da sequencia (lookback da rede)
-  units         = c(16L, 32L),       # unidades da GRU
   dropout       = c(0.0, 0.2),       # dropout
   learning_rate = c(1e-3),           # taxa de aprendizado
   batch_size    = c(32L),            # tamanho do batch
@@ -115,6 +124,7 @@ source("R/06_model_gru.R")
 source("R/07_tuning.R")
 source("R/08_evaluation.R")
 source("R/09_backtest.R")
+source("R/10_architectures.R")
 
 set.seed(SEED)
 ensure_dirs(unlist(DIRS))
@@ -164,6 +174,14 @@ if (nrow(dl$failures) > 0) {
 
 
 # ------------------------------------------------ 2) grade de hiperparametros
+# Gera as arquiteturas candidatas (abordagem empirica) e as injeta na grade via
+# 'arch_id' (indice na lista ARCHITECTURES). Assim a topologia da rede vira mais
+# um hiperparametro otimizado na validacao, sem quebrar o expand.grid (atomico).
+ARCHITECTURES <- arquitetura_redes(ARQ_MAX_CAMADAS, ARQ_NEURONIOS)
+log(glue::glue("Arquiteturas candidatas ({length(ARCHITECTURES)}): ",
+               "{paste(vapply(ARCHITECTURES, arch_to_str, character(1)), collapse = ', ')}"))
+
+HP_GRID <- c(HP_GRID_BASE, list(arch_id = seq_along(ARCHITECTURES)))
 hp_grid <- build_hp_grid(HP_GRID, max_combos = MAX_HP_COMBOS, seed = SEED)
 log(glue::glue("Grade de hiperparametros: {nrow(hp_grid)} combinacoes por empresa."))
 
@@ -183,17 +201,18 @@ for (tk in used_tickers) {
     tuned <- tune_company(
       prices, hp_grid, year = ANO_ANALISE, target_type = TARGET_TYPE,
       seed = SEED, rnn_type = RNN_TYPE, threshold = THRESHOLD,
-      selection_metric = SELECTION_METRIC, log = log)
+      selection_metric = SELECTION_METRIC, architectures = ARCHITECTURES,
+      log = log)
     best_hp <- tuned$best_hp
     log(glue::glue("  melhor config: win={best_hp$ind_window} ",
-                   "lb={best_hp$lookback} u={best_hp$units} ",
+                   "lb={best_hp$lookback} arch={best_hp$arch} ",
                    "drop={best_hp$dropout} | val_acc=",
                    "{round(best_hp$val_accuracy, 3)}"))
 
     # 3b) Modelo FINAL com a config vencedora (val so como early stopping).
     fit <- fit_final_model(prices, best_hp, year = ANO_ANALISE,
                            target_type = TARGET_TYPE, seed = SEED,
-                           rnn_type = RNN_TYPE)
+                           rnn_type = RNN_TYPE, architectures = ARCHITECTURES)
 
     # 3c) Avaliacao no TESTE FINAL (uma unica vez).
     ev <- evaluate_on_test(fit$model, fit$seqs, threshold = THRESHOLD)

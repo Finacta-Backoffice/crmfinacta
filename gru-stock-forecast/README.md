@@ -70,7 +70,17 @@ hiperparâmetros, tipo de célula (`gru`/`lstm`) e semente.
 
 - Janela dos indicadores técnicos (5–21)
 - Lookback da sequência (ex.: 10, 20)
-- Unidades da GRU (ex.: 16, 32), dropout, learning rate, batch size, épocas
+- **Arquitetura da rede** (busca empírica de topologia): nº de camadas GRU
+  empilhadas × unidades por camada, gerada por `arquitetura_redes()`
+  (`R/10_architectures.R`). Ex.: `arquitetura_redes(2, c(16,32))` →
+  `c(16), c(32), c(16,16), c(32,32)`. Ajuste `ARQ_MAX_CAMADAS` / `ARQ_NEURONIOS`
+  no topo de `main.R`.
+- Dropout, learning rate, batch size, épocas (com early stopping)
+
+> Obs.: a função `arquitetura_redes` original foi escrita para o pacote
+> `neuralnet` (MLP feedforward). Como o `neuralnet` não modela sequências
+> temporais, reaproveitamos a **ideia** de varredura de topologias, mapeando
+> cada vetor de unidades para **GRU empilhada** (Keras).
 
 ## Saídas geradas
 

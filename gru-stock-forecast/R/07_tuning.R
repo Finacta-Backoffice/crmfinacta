@@ -66,9 +66,21 @@ prepare_company_sequences <- function(prices_df, ind_window, lookback, year,
   list(ok = TRUE, seqs = seqs)
 }
 
+# Resolve a arquitetura (vetor de unidades por camada) de uma combinacao:
+#   * se 'hp' traz 'arch_id' e 'architectures' e fornecida -> usa a lista;
+#   * caso contrario, cai no escalar 'hp$units' (compatibilidade retroativa).
+.resolve_arch <- function(hp, architectures = NULL) {
+  if (!is.null(architectures) && !is.null(hp$arch_id)) {
+    return(architectures[[as.integer(hp$arch_id)]])
+  }
+  if (!is.null(hp$units)) return(as.integer(hp$units))
+  stop("arquitetura nao especificada (use arch_id+architectures ou units)")
+}
+
 # Avalia UMA combinacao de hiperparametros na validacao. Devolve as metricas de
-# validacao (accuracy/f1) ou NULL em caso de inviabilidade.
-evaluate_hp_on_val <- function(prices_df, hp, year, target_type, seed,
+# validacao (accuracy/f1) ou NULL em caso de inviabilidade. 'arch' e o vetor de
+# unidades por camada recorrente (escalar => 1 camada).
+evaluate_hp_on_val <- function(prices_df, hp, arch, year, target_type, seed,
                                rnn_type, threshold, feature_cache = NULL) {
   prep <- prepare_company_sequences(
     prices_df, hp$ind_window, hp$lookback, year, target_type, feature_cache)
@@ -77,7 +89,7 @@ evaluate_hp_on_val <- function(prices_df, hp, year, target_type, seed,
 
   model <- build_rnn_model(
     lookback = hp$lookback, n_features = length(seqs$feat_cols),
-    units = hp$units, dropout = hp$dropout,
+    units = arch, dropout = hp$dropout,
     learning_rate = hp$learning_rate, rnn_type = rnn_type)
 
   train_rnn_model(
@@ -104,33 +116,40 @@ evaluate_hp_on_val <- function(prices_df, hp, year, target_type, seed,
 #   $results  : data.frame com metricas de validacao de todas as combinacoes
 tune_company <- function(prices_df, hp_grid, year, target_type = "next_day_up",
                          seed = 42, rnn_type = "gru", threshold = 0.5,
-                         selection_metric = c("accuracy", "f1"), log = cat) {
+                         selection_metric = c("accuracy", "f1"),
+                         architectures = NULL, log = cat) {
   selection_metric <- match.arg(selection_metric)
   metric_col <- if (selection_metric == "accuracy") "val_accuracy" else "val_f1"
   cache <- .new_feature_cache()
 
   rows <- vector("list", nrow(hp_grid))
   for (i in seq_len(nrow(hp_grid))) {
-    hp <- as.list(hp_grid[i, , drop = FALSE])
+    hp   <- as.list(hp_grid[i, , drop = FALSE])
+    arch <- .resolve_arch(hp, architectures)   # vetor de unidades por camada
+    # Colunas descritivas da topologia (para logs e CSVs legiveis).
+    arch_meta <- data.frame(
+      arch = arch_to_str(arch), n_layers = length(arch),
+      n_units_max = max(arch), stringsAsFactors = FALSE)
+
     res <- tryCatch(
-      evaluate_hp_on_val(prices_df, hp, year, target_type, seed, rnn_type,
+      evaluate_hp_on_val(prices_df, hp, arch, year, target_type, seed, rnn_type,
                          threshold, feature_cache = cache),
       error = function(e) list(ok = FALSE, msg = conditionMessage(e)))
 
     if (isTRUE(res$ok)) {
       rows[[i]] <- data.frame(
-        hp_grid[i, , drop = FALSE],
+        hp_grid[i, , drop = FALSE], arch_meta,
         val_accuracy = res$val_accuracy, val_precision = res$val_precision,
         val_recall = res$val_recall, val_f1 = res$val_f1,
         n_train = res$n_train, n_val = res$n_val,
         status = "ok", stringsAsFactors = FALSE)
       log(glue::glue("  [tuning {i}/{nrow(hp_grid)}] ",
-                     "win={hp$ind_window} lb={hp$lookback} u={hp$units} ",
+                     "win={hp$ind_window} lb={hp$lookback} arch={arch_meta$arch} ",
                      "drop={hp$dropout} -> val_acc=",
                      "{round(res$val_accuracy, 3)} val_f1={round(res$val_f1, 3)}"))
     } else {
       rows[[i]] <- data.frame(
-        hp_grid[i, , drop = FALSE],
+        hp_grid[i, , drop = FALSE], arch_meta,
         val_accuracy = NA_real_, val_precision = NA_real_,
         val_recall = NA_real_, val_f1 = NA_real_,
         n_train = NA_integer_, n_val = NA_integer_,
@@ -145,8 +164,10 @@ tune_company <- function(prices_df, hp_grid, year, target_type = "next_day_up",
                 drop = FALSE]
   if (nrow(ok) == 0) stop("nenhuma combinacao de hiperparametros viavel")
 
-  # Melhor por metrica de validacao; desempate por val_f1 e menor complexidade.
-  ord <- order(-ok[[metric_col]], -ok$val_f1, ok$units, ok$lookback)
+  # Melhor por metrica de validacao; desempate por val_f1 e MENOR complexidade
+  # (menos camadas, menos unidades, menor lookback) -> parcimonia.
+  ord <- order(-ok[[metric_col]], -ok$val_f1, ok$n_layers, ok$n_units_max,
+               ok$lookback)
   best_hp <- ok[ord[1], , drop = FALSE]
   rownames(best_hp) <- NULL
 
@@ -157,15 +178,17 @@ tune_company <- function(prices_df, hp_grid, year, target_type = "next_day_up",
 # o modelo + as sequencias (incluindo teste) para avaliacao/backtest.
 # A validacao entra apenas como early stopping; o TESTE nao e tocado no treino.
 fit_final_model <- function(prices_df, best_hp, year, target_type,
-                            seed, rnn_type) {
+                            seed, rnn_type, architectures = NULL) {
   prep <- prepare_company_sequences(
     prices_df, best_hp$ind_window, best_hp$lookback, year, target_type)
   if (!isTRUE(prep$ok)) stop(glue::glue("dados finais insuficientes: {prep$msg}"))
   seqs <- prep$seqs
 
+  arch <- .resolve_arch(as.list(best_hp), architectures)
+
   model <- build_rnn_model(
     lookback = best_hp$lookback, n_features = length(seqs$feat_cols),
-    units = best_hp$units, dropout = best_hp$dropout,
+    units = arch, dropout = best_hp$dropout,
     learning_rate = best_hp$learning_rate, rnn_type = rnn_type)
 
   history <- train_rnn_model(
