@@ -1,0 +1,17 @@
+# Artefatos gerados pelo pipeline (nao versionados)
+data_raw/*.csv
+data_processed/*
+models/*.rds
+outputs/*.csv
+logs/*.log
+
+# Mantem a estrutura de pastas e a planilha de universo
+!**/.gitkeep
+!data_raw/Maiores_empresas.xlsx
+
+# R / ambiente
+.Rhistory
+.RData
+.Rproj.user/
+*.Rproj
+.DS_Store
