@@ -19,9 +19,9 @@
     font-family:"Inter",system-ui,sans-serif;-webkit-font-smoothing:antialiased;
     display:flex;flex-direction:column;min-height:100dvh;
   }
-  header{display:flex;align-items:center;gap:.6rem;padding:1.2rem 1.4rem .4rem}
-  .wordmark{font-family:"Fraunces",serif;font-weight:600;font-size:1.15rem;letter-spacing:-.01em;color:var(--brand)}
-  .wordmark .dot{color:var(--accent)}
+  header{display:flex;align-items:center;justify-content:flex-end;padding:1.2rem 1.4rem .4rem}
+  .logo-badge{background:var(--brand);border-radius:10px;padding:.5rem 1rem;display:inline-flex;align-items:center;line-height:0}
+  .logo-badge img{height:26px;width:auto;display:block}
   .progress-wrap{padding:0 1.4rem}
   .progress-track{height:3px;background:var(--line);border-radius:99px;overflow:hidden}
   .progress-bar{height:100%;width:0;background:var(--brand);border-radius:99px;transition:width .45s cubic-bezier(.22,.61,.36,1)}
@@ -64,7 +64,7 @@
 </style>
 </head>
 <body>
-  <header><span class="wordmark">Finacta<span class="dot">.</span></span></header>
+  <header><div class="logo-badge"><img src="logo.png" alt="Finacta"></div></header>
   <div class="progress-wrap"><div class="progress-track"><div class="progress-bar" id="bar"></div></div></div>
   <main><div class="stage" id="stage" aria-live="polite"></div></main>
   <footer>Clareza financeira, sob medida.</footer>
