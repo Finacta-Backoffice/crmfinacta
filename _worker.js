@@ -65,7 +65,29 @@ function notionHeaders(env) {
   };
 }
 
+// Trava de formato do lado do servidor. Mesma regra do formulário, mas aqui
+// vale sempre, mesmo se alguém chamar a API direto sem passar pelo formulário.
+function validateAnswers(answers) {
+  if (answers.whatsapp) {
+    const digits = answers.whatsapp.toString().replace(/\D/g, "");
+    if (digits.length !== 11) {
+      return `WhatsApp inválido: precisa de DDD + 9 dígitos (11 números ao todo). Recebi ${digits.length}.`;
+    }
+  }
+  if (answers.email) {
+    const email = answers.email.toString().trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+      return `Email inválido: "${email}"`;
+    }
+  }
+  return null;
+}
+
 async function createLead(answers, env) {
+  const validationError = validateAnswers(answers);
+  if (validationError) {
+    return Response.json({ ok: false, error: "validation", detail: validationError });
+  }
   try {
     const resp = await fetch("https://api.notion.com/v1/pages", {
       method: "POST",
@@ -90,6 +112,10 @@ async function createLead(answers, env) {
 
 async function updateLead(pageId, answers, complete, env) {
   if (!pageId) return Response.json({ ok: false, error: "no pageId" });
+  const validationError = validateAnswers(answers);
+  if (validationError) {
+    return Response.json({ ok: false, error: "validation", detail: validationError });
+  }
   try {
     const props = buildProperties(answers, complete ? { status: STATUS_COMPLETO } : {});
     const resp = await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
